@@ -12,7 +12,7 @@ type ExtensionPreferences = {
   "baseUrl": string,
   /** API Key / CLI Token - OmniRoute CLI token (header x-omniroute-cli-token) or a server API key. The CLI token is what `omniroute chat` uses locally. */
   "apiKey": string,
-  /** Default Model - Model id, or 'auto' to let OmniRoute route. Provider/model works too, e.g. gemini-web/gemini-3.1-pro. */
+  /** Default Model - Model id, or 'auto' to let OmniRoute route. Provider/model works too, e.g. gemini-web/gemini-3.5-flash. */
   "defaultModel": string,
   /** Auto-start server when down - When the OmniRoute server is down, the menubar item will attempt to start it automatically. */
   "autoStartServer": boolean,

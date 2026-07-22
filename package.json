@@ -92,8 +92,8 @@
       "name": "defaultModel",
       "type": "textfield",
       "title": "Default Model",
-      "description": "Model id, or 'auto' to let OmniRoute route. Provider/model works too, e.g. gemini-web/gemini-3.1-pro.",
-      "default": "auto",
+      "description": "Model id, or 'auto' to let OmniRoute route. Provider/model works too, e.g. gemini-web/gemini-3.5-flash.",
+      "default": "gweb/gemini-3.5-flash",
       "required": false
     },
     {
