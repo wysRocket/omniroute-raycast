@@ -1,0 +1,140 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "omniroute",
+  "title": "OmniRoute",
+  "description": "Chat with OmniRoute's local AI router, list models, and check server status from Raycast.",
+  "version": "0.1.0",
+  "author": "wysRocket",
+  "license": "MIT",
+  "categories": [
+    "Developer Tools"
+  ],
+  "icon": "omniroute.png",
+  "commands": [
+    {
+      "name": "chat",
+      "title": "Chat",
+      "description": "Send a prompt to OmniRoute and stream the reply.",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "prompt",
+          "type": "text",
+          "placeholder": "Ask OmniRoute anything…",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "models",
+      "title": "Models",
+      "description": "List models available through OmniRoute.",
+      "mode": "view"
+    },
+    {
+      "name": "status",
+      "title": "Status",
+      "description": "Show OmniRoute server health and connection status.",
+      "mode": "view"
+    },
+    {
+      "name": "ask",
+      "title": "Ask",
+      "description": "One-shot quick chat — bind to a hotkey. Pass 'prompt' and optionally 'model' arguments.",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "prompt",
+          "type": "text",
+          "placeholder": "Ask OmniRoute anything…",
+          "required": false
+        },
+        {
+          "name": "model",
+          "type": "text",
+          "placeholder": "Model id (optional, default: auto)",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "menubar",
+      "title": "OmniRoute Quick Chat",
+      "description": "Menu-bar quick chat with OmniRoute.",
+      "mode": "menu-bar",
+      "arguments": [
+        {
+          "name": "query",
+          "type": "text",
+          "placeholder": "Question to ask",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "preferences": [
+    {
+      "name": "baseUrl",
+      "type": "textfield",
+      "title": "OmniRoute Base URL",
+      "description": "Where your local OmniRoute server listens.",
+      "default": "http://localhost:20128",
+      "required": true
+    },
+    {
+      "name": "apiKey",
+      "type": "password",
+      "title": "API Key / CLI Token",
+      "description": "OmniRoute CLI token (header x-omniroute-cli-token) or a server API key. The CLI token is what `omniroute chat` uses locally.",
+      "required": true
+    },
+    {
+      "name": "defaultModel",
+      "type": "textfield",
+      "title": "Default Model",
+      "description": "Model id, or 'auto' to let OmniRoute route. Provider/model works too, e.g. gemini-web/gemini-3.1-pro.",
+      "default": "auto",
+      "required": false
+    },
+    {
+      "name": "autoStartServer",
+      "type": "checkbox",
+      "label": "Auto-start when server is down",
+      "title": "Auto-start server when down",
+      "description": "When the OmniRoute server is down, the menubar item will attempt to start it automatically.",
+      "default": false,
+      "required": false
+    },
+    {
+      "name": "autoCopyOnCompletion",
+      "type": "checkbox",
+      "label": "Auto-copy answer when done",
+      "title": "Auto-copy answer on completion",
+      "description": "When enabled, the Ask and Chat commands auto-copy the answer to clipboard on completion.",
+      "default": false,
+      "required": false
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.104.23"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.12",
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
+    "@typescript-eslint/parser": "^8.65.0",
+    "eslint": "^9.39.5",
+    "prettier": "^3.9.6",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.65.0"
+  },
+  "overrides": {
+    "@types/react": "^18.3.12"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "lint": "ray lint"
+  }
+}

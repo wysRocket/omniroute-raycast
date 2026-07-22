@@ -1,0 +1,128 @@
+import React, { useEffect, useRef, useState } from "react";
+import {
+  Detail,
+  LaunchProps,
+  showToast,
+  Toast,
+  Icon,
+  ActionPanel,
+  Action,
+  Clipboard,
+} from "@raycast/api";
+import { ChatMessage, streamChat, prefs } from "./client";
+
+const SYSTEM_PROMPT =
+  "You are OmniRoute, a helpful AI assistant accessed from Raycast.";
+
+/**
+ * One-shot quick ask. Bind this command to a global hotkey and pass a prompt
+ * via the launch argument; the streamed answer renders directly in a Detail
+ * view (no chat list). Great for "ask anything right now" workflows.
+ */
+export default function AskCommand(props: LaunchProps) {
+  const arg =
+    (props.arguments as { prompt?: string } | undefined)?.prompt ?? "";
+  const [text, setText] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const modelArg = (props.arguments as { model?: string } | undefined)?.model;
+  const activeModel = modelArg?.trim() || prefs().defaultModel || "auto";
+
+  useEffect(() => {
+    const prompt = arg.trim();
+    if (!prompt) {
+      setLoading(false);
+      setError("No prompt provided. Pass text as the command argument.");
+      return;
+    }
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    (async () => {
+      const history: ChatMessage[] = [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ];
+      try {
+        let acc = "";
+        for await (const partial of streamChat(
+          history,
+          activeModel,
+          controller.signal,
+        )) {
+          acc = partial;
+          setText(acc);
+        }
+        setDone(true);
+        // Auto-copy on completion if preference is enabled
+        if (prefs().autoCopyOnCompletion && acc) {
+          await Clipboard.copy(acc);
+          await showToast({
+            style: Toast.Style.Success,
+            title: "Copied",
+            message: `Answer from ${activeModel}`,
+          });
+        }
+      } catch (e) {
+        const msg = (e as Error).message;
+        if (!controller.signal.aborted) {
+          setError(msg);
+          await showToast({
+            style: Toast.Style.Failure,
+            title: "OmniRoute failed",
+            message: msg,
+          });
+        }
+      } finally {
+        setLoading(false);
+        abortRef.current = null;
+      }
+    })();
+
+    return () => controller.abort();
+  }, []);
+
+  // Append model footer when streaming is done
+  const body =
+    error != null
+      ? `## ⚠️ Error\n\n${error}`
+      : text
+        ? `${text}\n\n---\n*Model: ${activeModel}*`
+        : loading
+          ? "_Generating…_"
+          : "_No response_";
+
+  return (
+    <Detail
+      isLoading={loading}
+      markdown={body}
+      actions={
+        <ActionPanel>
+          {text && !error ? (
+            <>
+              <Action.CopyToClipboard content={text} />
+              <Action
+                title="Copy to Clipboard"
+                icon={Icon.Clipboard}
+                onAction={() => Clipboard.copy(text)}
+              />
+            </>
+          ) : null}
+          {done && text && (
+            <Action
+              title="Copy Answer & Model"
+              icon={Icon.Info}
+              onAction={() =>
+                Clipboard.copy(`${text}\n\n— Model: ${activeModel}`)
+              }
+            />
+          )}
+        </ActionPanel>
+      }
+    />
+  );
+}
