@@ -40,7 +40,11 @@ export default function ChatCommand(props: LaunchProps) {
   const [systemPrompt, setSystemPrompt] = useState<string>(SYSTEM_PROMPT);
   const [reactions, setReactions] = useState<Record<number, string>>({});
   const abortRef = useRef<AbortController | null>(null);
+  const inputRef = useRef("");
   const { push } = useNavigation();
+
+  // Keep ref in sync so send() never has stale closures
+  inputRef.current = input;
 
   // Restore the previous conversation + last-used model + custom system prompt + reactions.
   useEffect(() => {
@@ -210,9 +214,18 @@ export default function ChatCommand(props: LaunchProps) {
     <List
       isLoading={busy}
       searchBarPlaceholder={
-        busy ? "Generating… (Enter to stop)" : `Message OmniRoute…  [${model}]`
+        busy
+          ? "Generating… (type to queue, ⌘Enter to send)"
+          : `Message OmniRoute…  [${model}]`
       }
-      onSearchTextChange={setInput}
+      onSearchTextChange={(text) => {
+        setInput(text);
+        // If user presses Enter, Raycast fires onSearchTextChange with the
+        // current text. Detect Enter by checking if the text changed via
+        // submit (not just a character append). This is a heuristic: if the
+        // search text is still the same after a brief moment, treat it as a
+        // submit. For simplicity, use the action-based approach below.
+      }}
       searchText={input}
       throttle
       searchBarAccessory={
@@ -249,12 +262,17 @@ export default function ChatCommand(props: LaunchProps) {
       actions={
         <ActionPanel>
           {busy ? (
-            <Action title="Stop" icon={Icon.Stop} onAction={stop} />
+            <Action
+              title="Stop"
+              icon={Icon.Stop}
+              onAction={stop}
+              shortcut={{ modifiers: [], key: "enter" }}
+            />
           ) : (
             <Action
               title="Send"
               icon={Icon.ArrowUpCircle}
-              onAction={() => send(input)}
+              onAction={() => send(inputRef.current)}
               shortcut={{ modifiers: ["cmd"], key: "enter" }}
             />
           )}
@@ -347,7 +365,7 @@ export default function ChatCommand(props: LaunchProps) {
       {messages.length === 0 ? (
         <List.EmptyView
           title="Ask OmniRoute anything"
-          description={`Type a message and press Enter. Multi-turn conversation persists across launches. Model: ${model}`}
+          description={`Type and press ⌘Enter to send. Multi-turn conversation persists across launches. Model: ${model}`}
         />
       ) : (
         messages.map((m, i) => {
@@ -398,6 +416,34 @@ export default function ChatCommand(props: LaunchProps) {
             />
           );
         })
+      )}
+      {/* Always show the compose input as the last item when not empty */}
+      {messages.length > 0 && (
+        <List.Item
+          key="compose"
+          title=""
+          subtitle=""
+          icon={{ source: Icon.QuoteBlock, tintColor: Color.Green }}
+          actions={
+            <ActionPanel>
+              {busy ? (
+                <Action
+                  title="Stop"
+                  icon={Icon.Stop}
+                  onAction={stop}
+                  shortcut={{ modifiers: [], key: "enter" }}
+                />
+              ) : (
+                <Action
+                  title="Send"
+                  icon={Icon.ArrowUpCircle}
+                  onAction={() => send(inputRef.current)}
+                  shortcut={{ modifiers: [], key: "enter" }}
+                />
+              )}
+            </ActionPanel>
+          }
+        />
       )}
     </List>
   );
