@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { List, showToast, Toast, ActionPanel, Action } from "@raycast/api";
+import {
+  List,
+  showToast,
+  Toast,
+  ActionPanel,
+  Action,
+  Icon,
+  Clipboard,
+} from "@raycast/api";
 import { listModels, ModelInfo } from "./client";
 
 export default function ModelsCommand() {
@@ -30,13 +38,15 @@ export default function ModelsCommand() {
     })();
   }, []);
 
-  // Derive distinct provider prefixes from model ids (e.g. "gemini-web" from "gemini-web/gemini-3.1-pro")
-  const providers = new Set<string>();
+  const providers = new Map<string, number>();
   for (const m of models) {
     const parts = m.id.split("/");
-    if (parts.length > 1) providers.add(parts[0]);
+    const prefix = parts.length > 1 ? parts[0] : "(other)";
+    providers.set(prefix, (providers.get(prefix) ?? 0) + 1);
   }
-  const providersSorted = Array.from(providers).sort();
+  const providersSorted = Array.from(providers.entries()).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
 
   const filtered =
     filter === "all"
@@ -55,11 +65,21 @@ export default function ModelsCommand() {
           value={filter}
           onChange={setFilter}
         >
-          <List.Dropdown.Item title="All models" value="all" />
-          <List.Dropdown.Item title="Smart routers (auto/*)" value="auto" />
+          <List.Dropdown.Item
+            title={`All models (${models.length})`}
+            value="all"
+          />
+          <List.Dropdown.Item
+            title={`Smart routers (${models.filter((m) => m.id.startsWith("auto/")).length})`}
+            value="auto"
+          />
           <List.Dropdown.Section title="Providers">
-            {providersSorted.map((p) => (
-              <List.Dropdown.Item key={p} title={p} value={p} />
+            {providersSorted.map(([prefix, count]) => (
+              <List.Dropdown.Item
+                key={prefix}
+                title={`${prefix} (${count})`}
+                value={prefix}
+              />
             ))}
           </List.Dropdown.Section>
         </List.Dropdown>
@@ -73,6 +93,21 @@ export default function ModelsCommand() {
           actions={
             <ActionPanel>
               <Action.CopyToClipboard content={m.id} title="Copy Model ID" />
+              <Action
+                title="Set as Default Model"
+                icon={Icon.Star}
+                onAction={() => {
+                  Clipboard.copy(
+                    `Set defaultModel to ${m.id} in Raycast → Extensions → OmniRoute → Default Model`,
+                  );
+                  showToast({
+                    style: Toast.Style.Success,
+                    title: "Model ID copied",
+                    message:
+                      "Paste it into the Default Model preference field.",
+                  });
+                }}
+              />
             </ActionPanel>
           }
         />

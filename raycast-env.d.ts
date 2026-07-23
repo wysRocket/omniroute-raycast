@@ -17,7 +17,11 @@ type ExtensionPreferences = {
   /** Auto-start server when down - When the OmniRoute server is down, the menubar item will attempt to start it automatically. */
   "autoStartServer": boolean,
   /** Auto-copy answer on completion - When enabled, the Ask and Chat commands auto-copy the answer to clipboard on completion. */
-  "autoCopyOnCompletion": boolean
+  "autoCopyOnCompletion": boolean,
+  /** Ask System Prompt - System prompt used by the Ask command (one-shot). Leave blank for default. */
+  "askSystemPrompt": string,
+  /** Menubar auto-copy answer - When enabled, the menubar quick-chat auto-copies the answer to clipboard on completion. */
+  "menubarAutoCopy": boolean
 }
 
 /** Preferences accessible in all the extension's commands */

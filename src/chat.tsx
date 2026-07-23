@@ -14,13 +14,20 @@ import {
   Form,
   Clipboard,
 } from "@raycast/api";
-import { ChatMessage, streamChat, listModels, ModelInfo } from "./client";
+import {
+  ChatMessage,
+  streamChat,
+  listModels,
+  ModelInfo,
+  UsageInfo,
+} from "./client";
 
 interface Turn {
   role: "user" | "assistant";
   content: string;
   streaming?: boolean;
   timestamp?: number;
+  modelUsed?: string;
 }
 
 const SYSTEM_PROMPT =
@@ -41,6 +48,7 @@ export default function ChatCommand(props: LaunchProps) {
   const [reactions, setReactions] = useState<Record<number, string>>({});
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef("");
+  const usageRef = useRef<UsageInfo | null>(null);
   const { push } = useNavigation();
 
   // Keep ref in sync so send() never has stale closures
@@ -128,12 +136,15 @@ export default function ChatCommand(props: LaunchProps) {
 
     const activeModel = model || "auto";
 
+    usageRef.current = null;
+
     try {
       let acc = "";
       for await (const partial of streamChat(
         history,
         activeModel,
         controller.signal,
+        usageRef,
       )) {
         acc = partial;
         setMessages((prev) => {
@@ -152,6 +163,7 @@ export default function ChatCommand(props: LaunchProps) {
           role: "assistant",
           content: acc,
           streaming: false,
+          modelUsed: activeModel,
         };
         persist(next);
         return next;
@@ -205,6 +217,38 @@ export default function ChatCommand(props: LaunchProps) {
   async function newConversation() {
     await LocalStorage.removeItem(CONVO_KEY);
     setMessages([]);
+  }
+
+  /** Remove the last assistant message and re-send the last user message. */
+  function regenerate() {
+    if (busy || messages.length < 2) return;
+    const lastUserIdx = messages
+      .map((m, i) => (m.role === "user" ? i : -1))
+      .filter((i) => i >= 0)
+      .pop();
+    if (lastUserIdx === undefined) return;
+    const lastUserMsg = messages[lastUserIdx];
+    // Keep up to and including the user message, remove everything after
+    const trimmed = messages.slice(0, lastUserIdx + 1);
+    setMessages(trimmed);
+    setTimeout(() => send(lastUserMsg.content), 0);
+  }
+
+  /** Delete a specific message by index. */
+  function deleteMessage(idx: number) {
+    if (busy) return;
+    setMessages((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  /** Replace a user message with a new prompt and re-send. */
+  function editUserMessage(idx: number, newPrompt: string) {
+    if (busy) return;
+    const text = newPrompt.trim();
+    if (!text) return;
+    // Keep messages up to (but not including) the user message, then re-send
+    const trimmed = messages.slice(0, idx);
+    setMessages(trimmed);
+    setTimeout(() => send(text), 0);
   }
 
   const smartModels = models.filter((m) => m.id.startsWith("auto/"));
@@ -376,7 +420,18 @@ export default function ChatCommand(props: LaunchProps) {
                 minute: "2-digit",
               })
             : "";
-          const subtitle = [m.content || (m.streaming ? "…" : ""), timeStr]
+          // Build subtitle with content preview, model badge, and token usage
+          const modelBadge = m.modelUsed ? `[${m.modelUsed}]` : "";
+          const usageLabel =
+            m.role === "assistant" && i > 0 && usageRef.current
+              ? ` (${usageRef.current.total_tokens ?? "?"}t)`
+              : "";
+          const subtitle = [
+            m.content || (m.streaming ? "…" : ""),
+            timeStr,
+            modelBadge,
+            usageLabel,
+          ]
             .filter(Boolean)
             .join("  ·  ");
           return (
@@ -400,6 +455,11 @@ export default function ChatCommand(props: LaunchProps) {
                   {m.role === "assistant" && m.content && (
                     <>
                       <Action
+                        title="Regenerate"
+                        icon={Icon.RotateClockwise}
+                        onAction={regenerate}
+                      />
+                      <Action
                         title={reaction === "👍" ? "👍 (remove)" : "👍 Good"}
                         icon={Icon.ThumbsUp}
                         onAction={() => toggleReaction(i, "👍")}
@@ -410,6 +470,27 @@ export default function ChatCommand(props: LaunchProps) {
                         onAction={() => toggleReaction(i, "👎")}
                       />
                     </>
+                  )}
+                  {m.role === "user" && !busy && (
+                    <Action
+                      title="Edit & Re-send"
+                      icon={Icon.Pencil}
+                      onAction={() =>
+                        push(
+                          <EditMessage
+                            initial={m.content}
+                            onSubmit={(v) => editUserMessage(i, v)}
+                          />,
+                        )
+                      }
+                    />
+                  )}
+                  {!busy && (
+                    <Action
+                      title="Delete Message"
+                      icon={Icon.Trash}
+                      onAction={() => deleteMessage(i)}
+                    />
                   )}
                 </ActionPanel>
               }
@@ -518,6 +599,40 @@ function CustomPrompt({
         placeholder="Instructions for the AI…"
         defaultValue={current}
         autoFocus
+      />
+    </Form>
+  );
+}
+
+/** Inline form for editing a user message and re-sending. */
+function EditMessage({
+  initial,
+  onSubmit,
+}: {
+  initial: string;
+  onSubmit: (v: string) => void;
+}) {
+  const { pop } = useNavigation();
+  return (
+    <Form
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Send"
+            onSubmit={(values: { text: string }) => {
+              pop();
+              onSubmit(values.text ?? "");
+            }}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.TextArea
+        id="text"
+        title="Edit Message"
+        defaultValue={initial}
+        autoFocus
+        enableMarkdown={false}
       />
     </Form>
   );

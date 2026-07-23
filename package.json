@@ -113,6 +113,23 @@
       "description": "When enabled, the Ask and Chat commands auto-copy the answer to clipboard on completion.",
       "default": false,
       "required": false
+    },
+    {
+      "name": "askSystemPrompt",
+      "type": "textfield",
+      "title": "Ask System Prompt",
+      "description": "System prompt used by the Ask command (one-shot). Leave blank for default.",
+      "default": "",
+      "required": false
+    },
+    {
+      "name": "menubarAutoCopy",
+      "type": "checkbox",
+      "label": "Menubar: auto-copy answer",
+      "title": "Menubar auto-copy answer",
+      "description": "When enabled, the menubar quick-chat auto-copies the answer to clipboard on completion.",
+      "default": false,
+      "required": false
     }
   ],
   "dependencies": {

@@ -30,7 +30,6 @@ import {
 const SYSTEM_PROMPT =
   "You are OmniRoute, a helpful AI assistant accessed from the Raycast menu bar.";
 
-// Use the extension's bundled icon (assets/omniroute.png) for the menu-bar.
 const ICON = "omniroute.png";
 
 const LAST_ANSWER_KEY = "omniroute:menubar:last-answer";
@@ -45,22 +44,11 @@ export default function MenuBarCommand(props: LaunchProps) {
   const [selectedModel, setSelectedModel] = useState<string>("auto");
   const { push } = useNavigation();
 
-  // Poll server health on mount (and every 30s) so the menu-bar icon reflects
-  // whether OmniRoute is actually running.
-  //
-  // NOTE: Raycast has no API to *hide* a menu-bar command at runtime — the item
-  // is always visible when the command is enabled in Raycast preferences. So
-  // "only when the server is started" is approximated by showing a clear
-  // down-state with a one-click "Open Dashboard / Start Server" action. Users
-  // who want the item fully gone when the server is down can simply disable
-  // the menu-bar command in Raycast → Preferences → Extensions → OmniRoute.
   useEffect(() => {
     const check = async () => {
       const r = await healthCheck();
       setServerUp(r.ok);
       setServerDetail(r.detail);
-
-      // Auto-start server if preference is enabled and server is down.
       if (!r.ok && prefs().autoStartServer) {
         await showToast({
           style: Toast.Style.Animated,
@@ -76,7 +64,6 @@ export default function MenuBarCommand(props: LaunchProps) {
     return () => clearInterval(intervalId);
   }, []);
 
-  // Load the model catalog for the picker (best-effort).
   useEffect(() => {
     (async () => {
       try {
@@ -85,13 +72,11 @@ export default function MenuBarCommand(props: LaunchProps) {
       } catch {
         // non-fatal
       }
-      // Restore last-used model
       const saved = await LocalStorage.getItem<string>(LAST_MODEL_KEY);
       if (saved) setSelectedModel(saved);
     })();
   }, []);
 
-  // Restore last answer from LocalStorage on mount.
   useEffect(() => {
     (async () => {
       const saved = await LocalStorage.getItem<string>(LAST_ANSWER_KEY);
@@ -106,6 +91,21 @@ export default function MenuBarCommand(props: LaunchProps) {
 
     setBusy(true);
     setAnswer("");
+
+    // Push a Detail view immediately so the user sees streaming
+    push(
+      <StreamingDetail
+        model={selectedModel}
+        onDone={(finalText) => {
+          setAnswer(finalText);
+          LocalStorage.setItem(LAST_ANSWER_KEY, finalText);
+          if (prefs().menubarAutoCopy && finalText) {
+            Clipboard.copy(finalText);
+          }
+        }}
+      />,
+    );
+
     try {
       const history: ChatMessage[] = [
         { role: "system", content: SYSTEM_PROMPT },
@@ -114,11 +114,11 @@ export default function MenuBarCommand(props: LaunchProps) {
       let acc = "";
       for await (const partial of streamChat(history, selectedModel)) {
         acc = partial;
-        setAnswer(acc);
       }
-      // Persist answer for next menu open.
-      await LocalStorage.setItem(LAST_ANSWER_KEY, acc);
-      push(<Detail markdown={acc || "_No response_"} />);
+      LocalStorage.setItem(LAST_ANSWER_KEY, acc);
+      if (prefs().menubarAutoCopy && acc) {
+        await Clipboard.copy(acc);
+      }
     } catch (e) {
       await showToast({
         style: Toast.Style.Failure,
@@ -130,7 +130,20 @@ export default function MenuBarCommand(props: LaunchProps) {
     }
   }
 
-  // If launched with a query argument (e.g. via a hotkey), ask immediately.
+  function cycleModel(direction: 1 | -1) {
+    const smartModels = models.filter((m) => m.id.startsWith("auto/"));
+    if (smartModels.length === 0) return;
+    const idx = smartModels.findIndex((m) => m.id === selectedModel);
+    const next =
+      direction === 1
+        ? (idx + 1) % smartModels.length
+        : (idx - 1 + smartModels.length) % smartModels.length;
+    const nextId = smartModels[next].id;
+    setSelectedModel(nextId);
+    LocalStorage.setItem(LAST_MODEL_KEY, nextId);
+  }
+
+  // If launched with a query argument, ask immediately.
   useEffect(() => {
     const arg = (props.arguments as { query?: string } | undefined)?.query;
     if (arg) ask(arg);
@@ -138,8 +151,6 @@ export default function MenuBarCommand(props: LaunchProps) {
 
   const down = serverUp === false;
   const base = prefs().baseUrl.replace(/\/+$/, "");
-
-  // Smart router models (auto/*) for the picker.
   const smartModels = models.filter((m) => m.id.startsWith("auto/"));
 
   return (
@@ -185,6 +196,11 @@ export default function MenuBarCommand(props: LaunchProps) {
             onAction={() => push(<Detail markdown={answer ?? ""} />)}
           />
           <MenuBarExtra.Item
+            title="Copy Answer"
+            icon={Icon.Clipboard}
+            onAction={() => Clipboard.copy(answer ?? "")}
+          />
+          <MenuBarExtra.Item
             title="Clear Answer"
             icon={Icon.Xmark}
             onAction={() => {
@@ -216,31 +232,35 @@ export default function MenuBarCommand(props: LaunchProps) {
       )}
 
       {!down && (
-        <MenuBarExtra.Item
-          title={`Model: ${selectedModel}`}
-          icon={Icon.Cog}
-          onAction={() =>
-            push(
-              <QuickModelSwitch
-                models={smartModels}
-                currentModel={selectedModel}
-                onModelChange={(v) => {
-                  setSelectedModel(v);
-                  LocalStorage.setItem(LAST_MODEL_KEY, v);
-                }}
-              />,
-            )
-          }
-        />
+        <MenuBarExtra.Section title={`Model: ${selectedModel}`}>
+          <MenuBarExtra.Item
+            title="Switch Model…"
+            icon={Icon.Cog}
+            onAction={() =>
+              push(
+                <QuickModelSwitch
+                  models={smartModels}
+                  currentModel={selectedModel}
+                  onModelChange={(v) => {
+                    setSelectedModel(v);
+                    LocalStorage.setItem(LAST_MODEL_KEY, v);
+                  }}
+                />,
+              )
+            }
+          />
+          <MenuBarExtra.Item
+            title="Previous Model"
+            icon={Icon.ChevronUp}
+            onAction={() => cycleModel(-1)}
+          />
+          <MenuBarExtra.Item
+            title="Next Model"
+            icon={Icon.ChevronDown}
+            onAction={() => cycleModel(1)}
+          />
+        </MenuBarExtra.Section>
       )}
-
-      {!down && answer ? (
-        <MenuBarExtra.Item
-          title="Copy Answer"
-          icon={Icon.Clipboard}
-          onAction={() => Clipboard.copy(answer ?? "")}
-        />
-      ) : null}
 
       {!down && (
         <MenuBarExtra.Item
@@ -258,8 +278,57 @@ export default function MenuBarCommand(props: LaunchProps) {
   );
 }
 
-// Inline text prompt rendered as a Raycast Form (pushed onto the nav stack).
-// Includes an optional model picker dropdown.
+/** Detail view that shows streaming content. The parent passes onDone
+ * which gets called when the streaming finishes (via a different mechanism).
+ * Here we render the persisted answer after the stream completes via the
+ * parent's setAnswer flow.
+ */
+function StreamingDetail({
+  model,
+  onDone,
+}: {
+  model: string;
+  onDone: (text: string) => void;
+}) {
+  const [markdown, setMarkdown] = useState("_Waiting for response…_");
+  const { pop } = useNavigation();
+
+  // Poll for the answer to appear in LocalStorage (written by ask())
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      while (!cancelled) {
+        const stored = await LocalStorage.getItem<string>(LAST_ANSWER_KEY);
+        if (stored) {
+          setMarkdown(stored + `\n\n---\n*Model: ${model}*`);
+          if (!cancelled) {
+            onDone(stored);
+          }
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    };
+    poll();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <Detail
+      markdown={markdown}
+      actions={
+        <ActionPanel>
+          <Action title="Close" icon={Icon.Xmark} onAction={pop} />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+// --- Form components (unchanged) ---
+
 function QuickAsk({
   onSubmit,
   models,
@@ -311,7 +380,6 @@ function QuickAsk({
   );
 }
 
-// Inline model-picker form (no prompt, just model selection).
 function QuickModelSwitch({
   models,
   currentModel,

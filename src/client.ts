@@ -9,6 +9,10 @@ export interface Preferences {
   autoStartServer: boolean;
   /** When true, auto-copy answer to clipboard on completion. */
   autoCopyOnCompletion: boolean;
+  /** Custom system prompt for the Ask command. */
+  askSystemPrompt: string;
+  /** When true, menubar auto-copies answer on completion. */
+  menubarAutoCopy: boolean;
 }
 
 export function prefs(): Preferences {
@@ -76,21 +80,35 @@ export async function chat(
   return { text, model: data?.model, raw: data };
 }
 
+/** Token usage from API response (OpenAI-compatible). */
+export interface UsageInfo {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}
+
 /**
  * Streaming chat completion. Returns an async generator yielding incremental
  * text deltas (OpenAI SSE `choices[].delta.content`). The final yielded value
  * is the full accumulated string.
+ *
+ * When `usageRef` is provided, the parser populates it with the `usage` field
+ * from the final SSE chunk (OpenAI includes `usage` in chunks only when
+ * `stream_options: { include_usage: true }` is sent — OmniRoute may or may not
+ * include it server-side). Both the text and usageRef are best-effort.
  */
 export async function* streamChat(
   messages: ChatMessage[],
   model?: string,
   signal?: AbortSignal,
+  usageRef?: { current: UsageInfo | null },
 ): AsyncGenerator<string, void, unknown> {
   const p = prefs();
   const body = {
     model: model || p.defaultModel || "auto",
     messages,
     stream: true,
+    stream_options: { include_usage: true },
   };
   const res = await fetch(chatEndpoint(), {
     method: "POST",
@@ -128,6 +146,10 @@ export async function* streamChat(
         if (payload === "[DONE]") return;
         try {
           const json = JSON.parse(payload);
+          // Capture usage from the final chunk (OpenAI-style)
+          if (usageRef && json?.usage) {
+            usageRef.current = json.usage as UsageInfo;
+          }
           const delta: string = json?.choices?.[0]?.delta?.content ?? "";
           if (delta) {
             full += delta;
@@ -168,6 +190,41 @@ export async function listModels(): Promise<ModelInfo[]> {
     if (id) out.push({ id, name: (m.name as string) ?? (m.id as string) });
   }
   return out;
+}
+
+/** Fetch the /health endpoint for server version / uptime info. */
+export interface ServerHealth {
+  ok: boolean;
+  version?: string;
+  uptime?: string;
+  detail: string;
+}
+
+export async function serverHealth(): Promise<ServerHealth> {
+  try {
+    const res = await fetch(`${base()}/health`, {
+      headers: { ...authHeaders() },
+    });
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        const d = await res.json();
+        detail = (d as { error?: string })?.error ?? detail;
+      } catch {
+        /* ignore */
+      }
+      return { ok: false, detail };
+    }
+    const data = (await res.json()) as Record<string, unknown>;
+    return {
+      ok: true,
+      version: String(data.version ?? data.app ?? ""),
+      uptime: String(data.uptime ?? ""),
+      detail: "OK",
+    };
+  } catch (e) {
+    return { ok: false, detail: (e as Error).message };
+  }
 }
 
 export async function healthCheck(): Promise<{ ok: boolean; detail: string }> {
